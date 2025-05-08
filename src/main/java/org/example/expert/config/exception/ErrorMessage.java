@@ -1,4 +1,4 @@
-package org.example.expert.exception;
+package org.example.expert.config.exception;
 
 import lombok.Getter;
 
