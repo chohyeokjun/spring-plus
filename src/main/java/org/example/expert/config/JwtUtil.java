@@ -11,18 +11,13 @@ import org.example.expert.domain.user.enums.UserRole;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.security.Key;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Collection;
-import java.util.Date;
-import java.util.stream.Collectors;
+import java.util.*;
 
 @Slf4j(topic = "JwtUtil")
 @Component
@@ -49,7 +44,7 @@ public class JwtUtil {
                 Jwts.builder()
                         .setSubject(String.valueOf(userId))
                         .claim("email", email)
-                        .claim("userRole", userRole)
+                        .claim("userRole", userRole.name())
                         .claim("nickname", nickname)
                         .setExpiration(new Date(date.getTime() + TOKEN_TIME))
                         .setIssuedAt(date) // 발급일
@@ -64,20 +59,26 @@ public class JwtUtil {
         throw new ServerException("Not Found Token");
     }
 
-    public Authentication getAuthentication(String token) {
-        Claims claims = Jwts.parserBuilder()
+    public Claims parseClaims(String token) {
+        return Jwts.parserBuilder()
                 .setSigningKey(key)
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
+    }
 
-        Collection<? extends GrantedAuthority> authorities =
-                Arrays.stream(claims.get("auth").toString().split(","))
-                        .map(SimpleGrantedAuthority::new)
-                        .collect(Collectors.toList());
+    public Authentication getAuthentication(String token) {
+        Claims claims = parseClaims(token);
 
-        User principal = new User(claims.getSubject(), "", authorities);
+        String role = claims.get("userRole").toString();
+        UserRole userRole = UserRole.valueOf(role);
+        log.info("JWT에서 추출한 role = [{}]", role);
 
-        return new UsernamePasswordAuthenticationToken(principal, token, authorities);
+        SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + userRole.name());
+
+
+        User principal = new User(claims.getSubject(), "", List.of(authority));
+
+        return new UsernamePasswordAuthenticationToken(principal, token, List.of(authority));
     }
 }

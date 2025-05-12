@@ -1,8 +1,6 @@
 package org.example.expert.config;
 
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.MalformedJwtException;
-import io.jsonwebtoken.UnsupportedJwtException;
+import io.jsonwebtoken.*;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -24,6 +22,12 @@ public class JwtFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        String path = request.getRequestURI();
+
+        if (path.startsWith("/auth/")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
         String bearerJwt = request.getHeader("Authorization");
 
@@ -37,6 +41,11 @@ public class JwtFilter extends OncePerRequestFilter {
 
         // JWT 유효성 검사
         try {
+            Claims claims = jwtUtil.parseClaims(jwt);
+            request.setAttribute("userId", Long.valueOf(claims.getSubject()));
+            request.setAttribute("email", claims.get("email"));
+            request.setAttribute("userRole", claims.get("userRole"));
+            request.setAttribute("nickname", claims.get("nickname"));
             // JWT 토큰에서 인증 정보 추출
             Authentication authentication = jwtUtil.getAuthentication(jwt);
             SecurityContextHolder.getContext().setAuthentication(authentication);
