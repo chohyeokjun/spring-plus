@@ -1,14 +1,17 @@
 package org.example.expert.domain.todo.service;
 
-import com.querydsl.core.Tuple;
+import com.querydsl.core.BooleanBuilder;
+import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQuery;
 import com.querydsl.jpa.impl.JPAQueryFactory;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.example.expert.client.WeatherClient;
+import org.example.expert.domain.comment.entity.QComment;
 import org.example.expert.domain.common.dto.AuthUser;
-import org.example.expert.domain.common.exception.InvalidRequestException;
+import org.example.expert.domain.manager.entity.QManager;
 import org.example.expert.domain.todo.dto.request.TodoSaveRequest;
+import org.example.expert.domain.todo.dto.response.TodoInfoDto;
 import org.example.expert.domain.todo.dto.response.TodoResponse;
 import org.example.expert.domain.todo.dto.response.TodoSaveResponse;
 import org.example.expert.domain.todo.entity.QTodo;
@@ -18,12 +21,15 @@ import org.example.expert.domain.user.dto.response.UserResponse;
 import org.example.expert.domain.user.entity.QUser;
 import org.example.expert.domain.user.entity.User;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 @Service
@@ -136,5 +142,81 @@ public class TodoService {
                 todo.getCreatedAt(),
                 todo.getModifiedAt()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public Page<TodoInfoDto> searchTodos(int page, int size, String keyword, LocalDate startDate, LocalDate endDate, String nickname) {
+        Pageable pageable = PageRequest.of(page - 1, size);
+
+        QTodo qtodo = QTodo.todo;
+        QManager qmanager = QManager.manager;
+        QComment qcomment = QComment.comment;
+
+        // 동적 쿼리를 위한 빌더
+        BooleanBuilder builder = new BooleanBuilder();
+
+        // 아무 조건도 입력하지 않은 경우 예외
+        if (keyword == null && startDate == null && endDate == null && nickname == null) {
+            throw new IllegalArgumentException("키워드, 기간, 닉네임 중 하나는 필수 입력입니다.");
+        }
+
+        // 기간 검색 시 startDate 또는 endDate만 입력한 경우 예외
+        if ((startDate != null && endDate == null) || (startDate == null && endDate != null)) {
+            throw new IllegalArgumentException("기간 검색 시 시작일과 종료일을 모두 입력하세요.");
+        }
+
+        // 모두 입력시
+        if (keyword != null && (startDate != null || endDate != null || nickname != null)) {
+            throw new IllegalArgumentException("키워드, 기간, 닉네임 중 하나만 입력하세요");
+        }
+
+
+        // keyword 검색
+        if (keyword != null && startDate == null && endDate == null && nickname == null) {
+            builder.and(qtodo.title.contains(keyword));
+        }
+
+        // nickname 검색
+        if (keyword == null && startDate == null && endDate == null && nickname != null) {
+            builder.and(qtodo.managers.any().user.nickname.contains(nickname));
+        }
+
+        // query
+        JPAQuery<TodoInfoDto> todoInfoDtoJPAQuery = jpaQueryFactory.select(Projections.constructor(
+                        TodoInfoDto.class,
+                        qtodo.title,
+                        qmanager.count(),
+                        qcomment.count()
+                ))
+                .from(qtodo)
+                .leftJoin(qtodo.managers, qmanager)
+                .leftJoin(qtodo.comments, qcomment)
+                .groupBy(qtodo.title)
+                .offset(pageable.getOffset()) // page 처리 필수
+                .limit(pageable.getPageSize()) // page 처리 필수
+                .where(builder)
+                .groupBy(qtodo.title);
+
+        // 기간 검색
+        if (keyword == null && startDate != null && endDate != null && nickname == null) {
+            builder.and(qtodo.createdAt
+                    .between(startDate.atStartOfDay(), LocalDateTime.of(endDate, LocalTime.MAX))); // atStartOfDay -> 00시 시작 , LocalTime.MAX -> 23:59:59까지
+            todoInfoDtoJPAQuery.orderBy(qtodo.createdAt.max().desc());
+        }
+
+        // 결과 반환
+        List<TodoInfoDto> todoInfoDtoList = todoInfoDtoJPAQuery.fetch();
+
+        // 전체 데이터 개수(전체 page 표시 위해)
+        long total = jpaQueryFactory.select(qtodo.title.count())
+                .from(qtodo)
+                .leftJoin(qtodo.managers, qmanager)
+                .leftJoin(qtodo.comments, qcomment)
+                .where(builder)
+                .groupBy(qtodo.title)
+                .fetchOne();
+
+        // page 객체로 반환
+        return new PageImpl<>(todoInfoDtoList, pageable, total);
     }
 }
