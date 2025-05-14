@@ -9,7 +9,7 @@ public class ErrorMessage {
     private final String message;
 
     public ErrorMessage(int status, String error, String message) {
-        Status = status;
+        this.Status = status;
         this.error = error;
         this.message = message;
     }
