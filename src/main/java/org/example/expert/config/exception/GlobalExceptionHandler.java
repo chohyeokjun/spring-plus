@@ -20,6 +20,12 @@ public class GlobalExceptionHandler {
         return getErrorResponse(status, ex.getMessage());
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        return getErrorResponse(status, ex.getMessage());
+    }
+
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<Map<String, Object>> handleAuthException(AuthException ex) {
         HttpStatus status = HttpStatus.UNAUTHORIZED;
